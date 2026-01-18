@@ -5,27 +5,27 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import ru.stas.pupkov.projecttest.api.TimeRecordsApi;
-import ru.stas.pupkov.projecttest.api.StatusApi;
 import ru.stas.pupkov.projecttest.model.CountResponse;
-import ru.stas.pupkov.projecttest.model.StatusResponse;
-import ru.stas.pupkov.projecttest.model.TimeRecordResponse;
+import ru.stas.pupkov.projecttest.model.SliceTimeRecordResponse;
 import ru.stas.pupkov.projecttest.service.TimeRecordService;
 
-import java.util.List;
-
+@Slf4j
 @RestController
 @RequiredArgsConstructor
-@Slf4j
-public class TimeRecordController implements TimeRecordsApi, StatusApi {
+public class TimeRecordController implements TimeRecordsApi {
 
     private final TimeRecordService service;
 
     @Override
-    public ResponseEntity<List<TimeRecordResponse>> getAllTimeRecords() {
-        log.debug("Запрос на получение всех записей времени");
-        List<TimeRecordResponse> records = service.getAllRecords();
-        log.info("Возвращено {} записей времени", records.size());
-        return ResponseEntity.ok(records);
+    public ResponseEntity<SliceTimeRecordResponse> getAllTimeRecords(Integer page, Integer size) {
+        int pageNum = page != null ? page : 0;
+        int pageSize = size != null ? size : 20;
+        
+        log.debug("Запрос на получение записей времени: страница={}, размер={}", pageNum, pageSize);
+        SliceTimeRecordResponse response = service.getRecordsPaginated(pageNum, pageSize);
+        log.info("Возвращён срез: страница={}, записей={}, hasNext={}", 
+                 response.getPage(), response.getContent().size(), response.getHasNext());
+        return ResponseEntity.ok(response);
     }
 
     @Override
@@ -36,14 +36,5 @@ public class TimeRecordController implements TimeRecordsApi, StatusApi {
         CountResponse response = new CountResponse();
         response.setCount(count);
         return ResponseEntity.ok(response);
-    }
-
-    @Override
-    public ResponseEntity<StatusResponse> getStatus() {
-        log.debug("Запрос статуса сервиса");
-        StatusResponse status = service.getStatus();
-        log.debug("Статус: буфер={}, БД доступна={}, всего записей={}", 
-                  status.getBufferSize(), status.getDbAvailable(), status.getTotalRecords());
-        return ResponseEntity.ok(status);
     }
 }

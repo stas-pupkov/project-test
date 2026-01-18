@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'checkstyle'
     id 'org.springframework.boot' version '4.0.1'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'org.openapi.generator' version '7.2.0'
@@ -39,8 +40,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-liquibase'
     
-    // OpenAPI / Swagger UI
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
+    // OpenAPI
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.4'
     
     // MapStruct
     implementation "org.mapstruct:mapstruct:${mapstructVersion}"
@@ -105,4 +106,20 @@ compileJava.dependsOn tasks.openApiGenerate
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// Checkstyle конфигурация
+checkstyle {
+    toolVersion = '10.12.5'
+    configFile = file("${rootDir}/config/checkstyle/checkstyle.xml")
+    configProperties = ['suppressionFile': "${rootDir}/config/checkstyle/suppressions.xml"]
+    ignoreFailures = false
+    maxWarnings = 0
+}
+
+// Исключаем сгенерированный код из проверки Checkstyle
+tasks.withType(Checkstyle).configureEach {
+    exclude '**/generated/**'
+    exclude '**/model/**'
+    exclude '**/api/**'
 }

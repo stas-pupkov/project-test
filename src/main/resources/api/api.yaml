@@ -14,8 +14,6 @@ servers:
 tags:
   - name: TimeRecords
     description: Операции с записями времени
-  - name: Status
-    description: Статус сервиса
 
 paths:
   /api/times:
@@ -23,19 +21,34 @@ paths:
       tags:
         - TimeRecords
       operationId: getAllTimeRecords
-      summary: Получить все записи времени
+      summary: Получить записи времени
       description: |
-        Возвращает список всех записей времени в хронологическом порядке.
-        Порядок гарантируется без применения сортировки благодаря SERIAL primary key.
+        Возвращает страницу записей времени в хронологическом порядке.
+      parameters:
+        - name: page
+          in: query
+          description: Номер страницы (начиная с 0)
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          description: Количество записей на странице
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 1000
       responses:
         '200':
-          description: Список записей времени
+          description: Срез записей времени (без COUNT для оптимизации)
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TimeRecordResponse'
+                $ref: '#/components/schemas/SliceTimeRecordResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -55,27 +68,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CountResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /api/status:
-    get:
-      tags:
-        - Status
-      operationId: getStatus
-      summary: Получить статус сервиса
-      description: |
-        Возвращает текущий статус сервиса, включая:
-        - Размер буфера записей
-        - Доступность базы данных
-        - Общее количество записей в БД
-      responses:
-        '200':
-          description: Статус сервиса
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StatusResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -99,6 +91,56 @@ components:
         - id
         - recordedAt
 
+    SliceTimeRecordResponse:
+      type: object
+      description: |
+        Срез записей времени с метаданными пагинации.
+        Использует Slice вместо Page для оптимизации производительности — 
+        не выполняется COUNT(*) запрос, что критично при миллионах записей.
+      properties:
+        content:
+          type: array
+          description: Список записей на текущей странице
+          items:
+            $ref: '#/components/schemas/TimeRecordResponse'
+        page:
+          type: integer
+          description: Текущий номер страницы (начиная с 0)
+          example: 0
+        size:
+          type: integer
+          description: Размер страницы
+          example: 20
+        numberOfElements:
+          type: integer
+          description: Количество элементов на текущей странице
+          example: 20
+        first:
+          type: boolean
+          description: Является ли текущая страница первой
+          example: true
+        last:
+          type: boolean
+          description: Является ли текущая страница последней
+          example: false
+        hasNext:
+          type: boolean
+          description: Есть ли следующая страница
+          example: true
+        hasPrevious:
+          type: boolean
+          description: Есть ли предыдущая страница
+          example: false
+      required:
+        - content
+        - page
+        - size
+        - numberOfElements
+        - first
+        - last
+        - hasNext
+        - hasPrevious
+
     CountResponse:
       type: object
       description: Ответ с количеством записей
@@ -110,39 +152,6 @@ components:
           example: 1000
       required:
         - count
-
-    StatusResponse:
-      type: object
-      description: Статус сервиса
-      properties:
-        bufferSize:
-          type: integer
-          description: Текущий размер буфера (записи, ожидающие сохранения в БД)
-          example: 5
-        maxBufferSize:
-          type: integer
-          description: Максимальный размер буфера
-          example: 10000
-        dbAvailable:
-          type: boolean
-          description: Доступна ли база данных
-          example: true
-        totalRecords:
-          type: integer
-          format: int64
-          description: Общее количество записей в базе данных
-          example: 1000
-        droppedRecords:
-          type: integer
-          format: int64
-          description: Количество потерянных записей из-за переполнения буфера
-          example: 0
-      required:
-        - bufferSize
-        - maxBufferSize
-        - dbAvailable
-        - totalRecords
-        - droppedRecords
 
     ErrorResponse:
       type: object

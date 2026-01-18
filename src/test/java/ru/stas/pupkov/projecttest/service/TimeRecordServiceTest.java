@@ -6,11 +6,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 import ru.stas.pupkov.projecttest.config.TimeLoggerProperties;
 import ru.stas.pupkov.projecttest.entity.TimeRecord;
 import ru.stas.pupkov.projecttest.exception.DatabaseUnavailableException;
 import ru.stas.pupkov.projecttest.mapper.TimeRecordMapper;
-import ru.stas.pupkov.projecttest.model.StatusResponse;
+import ru.stas.pupkov.projecttest.model.SliceTimeRecordResponse;
 import ru.stas.pupkov.projecttest.model.TimeRecordResponse;
 import ru.stas.pupkov.projecttest.repository.TimeRecordRepository;
 
@@ -21,22 +25,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-/**
- * Unit-тесты для TimeRecordService.
- * 
- * <p>Тестируется:
- * <ul>
- *   <li>Добавление времени в буфер</li>
- *   <li>Backpressure при переполнении буфера</li>
- *   <li>Batch-запись в БД</li>
- *   <li>Обработка недоступности БД</li>
- *   <li>Получение статуса сервиса</li>
- * </ul>
- */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("TimeRecordService Unit Tests")
 class TimeRecordServiceTest {
 
     @Mock
@@ -47,42 +41,37 @@ class TimeRecordServiceTest {
 
     private TimeRecordService service;
 
-    private TimeLoggerProperties properties;
-
     @BeforeEach
     void setUp() {
-        // Настройки с небольшим буфером для тестирования
-        properties = new TimeLoggerProperties(5, 2, 1000);
+        //Настройки с небольшим буфером для тестирования
+        TimeLoggerProperties properties = new TimeLoggerProperties(5, 2, 1000);
         service = new TimeRecordService(repository, mapper, properties);
     }
 
     @Test
     @DisplayName("Добавление времени в буфер")
     void addTime_shouldAddToBuffer() {
-        // Given
         LocalDateTime time = LocalDateTime.now();
 
-        // When
         service.addTime(time);
 
-        // Then
         assertThat(service.getBufferSize()).isEqualTo(1);
     }
 
     @Test
     @DisplayName("Backpressure: удаление старой записи при переполнении буфера")
     void addTime_shouldDropOldestWhenBufferFull() {
-        // Given: заполняем буфер до максимума
+        //Заполняем буфер до максимума
         for (int i = 0; i < 5; i++) {
             service.addTime(LocalDateTime.now().minusSeconds(5 - i));
         }
         assertThat(service.getBufferSize()).isEqualTo(5);
         assertThat(service.getDroppedRecordsCount()).isEqualTo(0);
 
-        // When: добавляем ещё одну запись
+        //Добавляем ещё одну запись
         service.addTime(LocalDateTime.now());
 
-        // Then: буфер не превышает максимум, старая запись удалена
+        //Буфер не превышает максимум, старая запись удалена
         assertThat(service.getBufferSize()).isEqualTo(5);
         assertThat(service.getDroppedRecordsCount()).isEqualTo(1);
     }
@@ -90,18 +79,14 @@ class TimeRecordServiceTest {
     @Test
     @DisplayName("Batch-запись записей в БД")
     void flushBuffer_shouldSaveBatchToDatabase() {
-        // Given
         service.addTime(LocalDateTime.now());
         service.addTime(LocalDateTime.now());
         service.addTime(LocalDateTime.now());
-        
         when(repository.saveAll(anyList())).thenReturn(List.of());
 
-        // When
         int written = service.flushBuffer();
 
-        // Then
-        assertThat(written).isEqualTo(2); // batch size = 2
+        assertThat(written).isEqualTo(2); // batch size для теста = 2
         assertThat(service.getBufferSize()).isEqualTo(1); // осталась 1 запись
         verify(repository, times(1)).saveAll(anyList());
     }
@@ -109,103 +94,201 @@ class TimeRecordServiceTest {
     @Test
     @DisplayName("flushBuffer не вызывает repository при пустом буфере")
     void flushBuffer_shouldNotSaveWhenBufferEmpty() {
-        // Given: пустой буфер
-
-        // When
         int written = service.flushBuffer();
 
-        // Then
         assertThat(written).isEqualTo(0);
         verify(repository, never()).saveAll(anyList());
     }
 
     @Test
-    @DisplayName("getAllRecords возвращает записи из БД")
-    void getAllRecords_shouldReturnMappedRecords() {
-        // Given
+    @DisplayName("getRecordsPaginated возвращает срез записей из БД (Slice без COUNT)")
+    void getRecordsPaginated_shouldReturnSlicedRecords() {
         List<TimeRecord> entities = List.of(
                 new TimeRecord(1L, LocalDateTime.now()),
-                new TimeRecord(2L, LocalDateTime.now())
-        );
+                new TimeRecord(2L, LocalDateTime.now()));
         TimeRecordResponse response1 = new TimeRecordResponse();
         response1.setId(1L);
         TimeRecordResponse response2 = new TimeRecordResponse();
         response2.setId(2L);
         List<TimeRecordResponse> responses = List.of(response1, response2);
         
-        when(repository.findAll()).thenReturn(entities);
+        Slice<TimeRecord> slice = new SliceImpl<>(
+                entities, 
+                PageRequest.of(0, 20), 
+                true  // hasNext
+        );
+        when(repository.findAllBy(any(Pageable.class))).thenReturn(slice);
         when(mapper.toResponseList(entities)).thenReturn(responses);
 
-        // When
-        List<TimeRecordResponse> result = service.getAllRecords();
+        SliceTimeRecordResponse result = service.getRecordsPaginated(0, 20);
 
-        // Then
-        assertThat(result).hasSize(2);
-        verify(repository).findAll();
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getPage()).isEqualTo(0);
+        assertThat(result.getNumberOfElements()).isEqualTo(2);
+        assertThat(result.getFirst()).isTrue();
+        assertThat(result.getLast()).isFalse();  // hasNext=true, значит не последняя
+        assertThat(result.getHasNext()).isTrue();
+        assertThat(result.getHasPrevious()).isFalse();
+        verify(repository).findAllBy(any(Pageable.class));
         verify(mapper).toResponseList(entities);
     }
 
     @Test
-    @DisplayName("getAllRecords выбрасывает исключение при недоступной БД")
-    void getAllRecords_shouldThrowWhenDbUnavailable() {
-        // Given
-        when(repository.findAll()).thenThrow(new RuntimeException("Connection refused"));
+    @DisplayName("getRecordsPaginated выбрасывает исключение при недоступной БД")
+    void getRecordsPaginated_shouldThrowWhenDbUnavailable() {
+        when(repository.findAllBy(any(Pageable.class)))
+                .thenThrow(new RuntimeException("Connection refused"));
 
-        // When/Then
-        assertThatThrownBy(() -> service.getAllRecords())
+        assertThatThrownBy(() -> service.getRecordsPaginated(0, 20))
                 .isInstanceOf(DatabaseUnavailableException.class);
-    }
-
-    @Test
-    @DisplayName("getStatus возвращает корректный статус")
-    void getStatus_shouldReturnCorrectStatus() {
-        // Given
-        service.addTime(LocalDateTime.now());
-        service.addTime(LocalDateTime.now());
-        when(repository.count()).thenReturn(100L);
-
-        // When
-        StatusResponse status = service.getStatus();
-
-        // Then
-        assertThat(status.getBufferSize()).isEqualTo(2);
-        assertThat(status.getMaxBufferSize()).isEqualTo(5);
-        assertThat(status.getDbAvailable()).isTrue();
-        assertThat(status.getTotalRecords()).isEqualTo(100L);
-        assertThat(status.getDroppedRecords()).isEqualTo(0L);
     }
 
     @Test
     @DisplayName("tryReconnect восстанавливает флаг доступности БД")
     void tryReconnect_shouldRestoreDbAvailability() {
-        // Given: симулируем недоступность БД
-        when(repository.findAll()).thenThrow(new RuntimeException("Connection refused"));
+        //Симулируем недоступность БД
+        when(repository.findAllBy(any(Pageable.class))).thenThrow(new RuntimeException("Connection refused"));
         try {
-            service.getAllRecords();
+            service.getRecordsPaginated(0, 20);
         } catch (DatabaseUnavailableException ignored) {
         }
         assertThat(service.isDatabaseAvailable()).isFalse();
 
-        // When: БД снова доступна
+        //БД снова доступна
         when(repository.count()).thenReturn(0L);
         service.tryReconnect();
 
-        // Then
         assertThat(service.isDatabaseAvailable()).isTrue();
     }
 
     @Test
     @DisplayName("Счётчик записанных записей увеличивается после flush")
     void flushBuffer_shouldIncrementWrittenCounter() {
-        // Given
         service.addTime(LocalDateTime.now());
         service.addTime(LocalDateTime.now());
         when(repository.saveAll(anyList())).thenReturn(List.of());
 
-        // When
         service.flushBuffer();
 
-        // Then
+        assertThat(service.getWrittenRecordsCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("При ошибке записи записи возвращаются в буфер")
+    void flushBuffer_shouldReturnRecordsToBufferOnError() {
+        service.addTime(LocalDateTime.now());
+        service.addTime(LocalDateTime.now());
+        when(repository.saveAll(anyList())).thenThrow(new RuntimeException("DB error"));
+
+        assertThatThrownBy(() -> service.flushBuffer())
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("DB error");
+
+        //Записи должны вернуться в буфер
+        assertThat(service.getBufferSize()).isEqualTo(2);
+        //Счётчик записанных не должен измениться
+        assertThat(service.getWrittenRecordsCount()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("При ошибке записи хронологический порядок сохраняется")
+    void flushBuffer_shouldPreserveChronologicalOrderOnError() {
+        LocalDateTime time1 = LocalDateTime.of(2024, 1, 1, 10, 0, 0);
+        LocalDateTime time2 = LocalDateTime.of(2024, 1, 1, 10, 0, 1);
+        LocalDateTime time3 = LocalDateTime.of(2024, 1, 1, 10, 0, 2);
+
+        service.addTime(time1);
+        service.addTime(time2);
+        service.addTime(time3);
+        assertThat(service.getBufferSize()).isEqualTo(3);
+
+        //Первый flush падает, затем два успешных
+        when(repository.saveAll(anyList()))
+                .thenThrow(new RuntimeException("DB error"))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.flushBuffer()).isInstanceOf(RuntimeException.class);
+
+        //Все 3 записи должны быть в буфере
+        assertThat(service.getBufferSize()).isEqualTo(3);
+
+        //Теперь БД доступна, записываем
+        int written1 = service.flushBuffer();
+        assertThat(written1).isEqualTo(2); // batch size в тесте = 2
+
+        int written2 = service.flushBuffer();
+        assertThat(written2).isEqualTo(1); // оставшаяся 1 запись
+
+        //В буффере ничего не осталось, 3 записи в БД
+        assertThat(service.getBufferSize()).isEqualTo(0);
+        assertThat(service.getWrittenRecordsCount()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Записи возвращаются в начало буфера, а не в конец")
+    void flushBuffer_shouldAddRecordsToFrontOfBufferOnError() {
+        //Используем properties с batchSize=2, maxBufferSize=5
+        LocalDateTime oldTime1 = LocalDateTime.of(2024, 1, 1, 10, 0, 0);
+        LocalDateTime oldTime2 = LocalDateTime.of(2024, 1, 1, 10, 0, 1);
+        LocalDateTime newTime = LocalDateTime.of(2024, 1, 1, 10, 0, 2);
+
+        service.addTime(oldTime1);
+        service.addTime(oldTime2);
+
+        //Первый flush падает, затем успешный
+        when(repository.saveAll(anyList()))
+                .thenThrow(new RuntimeException("DB error"))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.flushBuffer()).isInstanceOf(RuntimeException.class);
+
+        //Добавляем новую запись ПОСЛЕ ошибки
+        service.addTime(newTime);
+
+        //Буфер должен содержать: [oldTime1, oldTime2, newTime]
+        assertThat(service.getBufferSize()).isEqualTo(3);
+
+        //Теперь flush должен забрать старые записи первыми
+        int written = service.flushBuffer();
+
+        assertThat(written).isEqualTo(2); // batch size для теста = 2, забраны oldTime1 и oldTime2
+        assertThat(service.getBufferSize()).isEqualTo(1); // осталась newTime
+    }
+
+    @Test
+    @DisplayName("Многократные ошибки не нарушают порядок записей")
+    void flushBuffer_shouldPreserveOrderAfterMultipleErrors() {
+        LocalDateTime time1 = LocalDateTime.of(2024, 1, 1, 10, 0, 0);
+        LocalDateTime time2 = LocalDateTime.of(2024, 1, 1, 10, 0, 1);
+
+        service.addTime(time1);
+        service.addTime(time2);
+
+        //Три ошибки, затем успех
+        when(repository.saveAll(anyList()))
+                .thenThrow(new RuntimeException("Error 1"))
+                .thenThrow(new RuntimeException("Error 2"))
+                .thenThrow(new RuntimeException("Error 3"))
+                .thenReturn(List.of());
+
+        //Первая ошибка
+        assertThatThrownBy(() -> service.flushBuffer()).isInstanceOf(RuntimeException.class);
+        assertThat(service.getBufferSize()).isEqualTo(2);
+
+        //Вторая ошибка
+        assertThatThrownBy(() -> service.flushBuffer()).isInstanceOf(RuntimeException.class);
+        assertThat(service.getBufferSize()).isEqualTo(2);
+
+        //Третья ошибка
+        assertThatThrownBy(() -> service.flushBuffer()).isInstanceOf(RuntimeException.class);
+        assertThat(service.getBufferSize()).isEqualTo(2);
+
+        //Успешная запись
+        int written = service.flushBuffer();
+
+        assertThat(written).isEqualTo(2);
+        assertThat(service.getBufferSize()).isEqualTo(0);
         assertThat(service.getWrittenRecordsCount()).isEqualTo(2);
     }
 }

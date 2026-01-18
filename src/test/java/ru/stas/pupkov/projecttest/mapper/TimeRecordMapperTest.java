@@ -13,12 +13,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Unit-тесты для TimeRecordMapper.
- * 
- * <p>Проверяет корректность маппинга между Entity и DTO.
- */
-@DisplayName("TimeRecordMapper Unit Tests")
 class TimeRecordMapperTest {
 
     private final TimeRecordMapper mapper = Mappers.getMapper(TimeRecordMapper.class);
@@ -26,20 +20,17 @@ class TimeRecordMapperTest {
     @Test
     @DisplayName("toResponse корректно маппит Entity в DTO")
     void toResponse_shouldMapEntityToDto() {
-        // Given
         LocalDateTime now = LocalDateTime.now();
         TimeRecord entity = TimeRecord.builder()
                 .id(1L)
                 .recordedAt(now)
                 .build();
 
-        // When
         TimeRecordResponse response = mapper.toResponse(entity);
 
-        // Then
         assertThat(response).isNotNull();
         assertThat(response.getId()).isEqualTo(1L);
-        // LocalDateTime конвертируется в OffsetDateTime с UTC offset
+        //LocalDateTime конвертируется в OffsetDateTime с UTC offset
         OffsetDateTime expectedTime = now.atOffset(ZoneOffset.UTC);
         assertThat(response.getRecordedAt()).isEqualTo(expectedTime);
     }
@@ -47,31 +38,24 @@ class TimeRecordMapperTest {
     @Test
     @DisplayName("toResponse возвращает null для null Entity")
     void toResponse_shouldReturnNullForNullEntity() {
-        // When
         TimeRecordResponse response = mapper.toResponse(null);
 
-        // Then
         assertThat(response).isNull();
     }
 
     @Test
     @DisplayName("toResponseList корректно маппит список Entity в список DTO")
     void toResponseList_shouldMapEntityListToDtoList() {
-        // Given
         LocalDateTime time1 = LocalDateTime.now().minusSeconds(2);
         LocalDateTime time2 = LocalDateTime.now().minusSeconds(1);
         LocalDateTime time3 = LocalDateTime.now();
-        
         List<TimeRecord> entities = List.of(
                 TimeRecord.builder().id(1L).recordedAt(time1).build(),
                 TimeRecord.builder().id(2L).recordedAt(time2).build(),
-                TimeRecord.builder().id(3L).recordedAt(time3).build()
-        );
+                TimeRecord.builder().id(3L).recordedAt(time3).build());
 
-        // When
         List<TimeRecordResponse> responses = mapper.toResponseList(entities);
 
-        // Then
         assertThat(responses).hasSize(3);
         assertThat(responses.get(0).getId()).isEqualTo(1L);
         assertThat(responses.get(0).getRecordedAt()).isEqualTo(time1.atOffset(ZoneOffset.UTC));
@@ -82,33 +66,26 @@ class TimeRecordMapperTest {
     @Test
     @DisplayName("toResponseList возвращает null для null списка")
     void toResponseList_shouldReturnNullForNullList() {
-        // When
         List<TimeRecordResponse> responses = mapper.toResponseList(null);
 
-        // Then
         assertThat(responses).isNull();
     }
 
     @Test
     @DisplayName("toResponseList возвращает пустой список для пустого входного списка")
     void toResponseList_shouldReturnEmptyListForEmptyInput() {
-        // When
         List<TimeRecordResponse> responses = mapper.toResponseList(List.of());
 
-        // Then
         assertThat(responses).isEmpty();
     }
     
     @Test
     @DisplayName("localToOffset корректно преобразует LocalDateTime в OffsetDateTime")
     void localToOffset_shouldConvertCorrectly() {
-        // Given
         LocalDateTime localDateTime = LocalDateTime.of(2024, 1, 17, 12, 0, 0);
         
-        // When
         OffsetDateTime result = mapper.localToOffset(localDateTime);
         
-        // Then
         assertThat(result).isNotNull();
         assertThat(result.getOffset()).isEqualTo(ZoneOffset.UTC);
         assertThat(result.toLocalDateTime()).isEqualTo(localDateTime);
@@ -117,10 +94,8 @@ class TimeRecordMapperTest {
     @Test
     @DisplayName("localToOffset возвращает null для null")
     void localToOffset_shouldReturnNullForNull() {
-        // When
         OffsetDateTime result = mapper.localToOffset(null);
         
-        // Then
         assertThat(result).isNull();
     }
 }

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+    <!-- Исключаем сгенерированный код OpenAPI -->
+    <suppress files="[\\/]generated[\\/]" checks=".*"/>
+    <suppress files="[\\/]model[\\/]" checks=".*"/>
+    <suppress files="[\\/]api[\\/]" checks=".*"/>
+    
+    <!-- Исключаем тесты из некоторых проверок -->
+    <suppress files=".*Test\.java$" checks="MethodLength"/>
+    <suppress files=".*Test\.java$" checks="FileLength"/>
+    <suppress files=".*Test\.java$" checks="LineLength"/>
+    <suppress files=".*Test\.java$" checks="MethodName"/>
+    <suppress files=".*Test\.java$" checks="MagicNumber"/>
+    <suppress files=".*Test\.java$" checks="AvoidStarImport"/>
+    
+    <!-- Исключаем Application класс -->
+    <suppress files="ProjectTestApplication\.java$" checks="HideUtilityClassConstructor"/>
+</suppressions>
