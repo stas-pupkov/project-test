@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: timelogger-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: timelogger
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d timelogger"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - timelogger-network
+
+networks:
+  timelogger-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

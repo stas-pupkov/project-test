@@ -1,0 +1,199 @@
+openapi: 3.0.3
+info:
+  title: Time Logger API
+  description: |
+    API для сервиса записи времени.
+    
+    Сервис записывает текущее время в базу данных каждую секунду и предоставляет
+    endpoint для получения всех записей в хронологическом порядке.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: TimeRecords
+    description: Операции с записями времени
+  - name: Status
+    description: Статус сервиса
+
+paths:
+  /api/times:
+    get:
+      tags:
+        - TimeRecords
+      operationId: getAllTimeRecords
+      summary: Получить все записи времени
+      description: |
+        Возвращает список всех записей времени в хронологическом порядке.
+        Порядок гарантируется без применения сортировки благодаря SERIAL primary key.
+      responses:
+        '200':
+          description: Список записей времени
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeRecordResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/times/count:
+    get:
+      tags:
+        - TimeRecords
+      operationId: getTimeRecordsCount
+      summary: Получить количество записей
+      description: Возвращает общее количество записей времени в базе данных.
+      responses:
+        '200':
+          description: Количество записей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/status:
+    get:
+      tags:
+        - Status
+      operationId: getStatus
+      summary: Получить статус сервиса
+      description: |
+        Возвращает текущий статус сервиса, включая:
+        - Размер буфера записей
+        - Доступность базы данных
+        - Общее количество записей в БД
+      responses:
+        '200':
+          description: Статус сервиса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  schemas:
+    TimeRecordResponse:
+      type: object
+      description: Запись времени из базы данных
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Уникальный идентификатор записи
+          example: 1
+        recordedAt:
+          type: string
+          format: date-time
+          description: Временная метка записи
+          example: "2024-01-17T12:00:00"
+      required:
+        - id
+        - recordedAt
+
+    CountResponse:
+      type: object
+      description: Ответ с количеством записей
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: Общее количество записей
+          example: 1000
+      required:
+        - count
+
+    StatusResponse:
+      type: object
+      description: Статус сервиса
+      properties:
+        bufferSize:
+          type: integer
+          description: Текущий размер буфера (записи, ожидающие сохранения в БД)
+          example: 5
+        maxBufferSize:
+          type: integer
+          description: Максимальный размер буфера
+          example: 10000
+        dbAvailable:
+          type: boolean
+          description: Доступна ли база данных
+          example: true
+        totalRecords:
+          type: integer
+          format: int64
+          description: Общее количество записей в базе данных
+          example: 1000
+        droppedRecords:
+          type: integer
+          format: int64
+          description: Количество потерянных записей из-за переполнения буфера
+          example: 0
+      required:
+        - bufferSize
+        - maxBufferSize
+        - dbAvailable
+        - totalRecords
+        - droppedRecords
+
+    ErrorResponse:
+      type: object
+      description: Ответ об ошибке
+      properties:
+        code:
+          type: string
+          description: Код ошибки
+          example: "DB_UNAVAILABLE"
+        message:
+          type: string
+          description: Описание ошибки
+          example: "База данных временно недоступна"
+        timestamp:
+          type: string
+          format: date-time
+          description: Время возникновения ошибки
+          example: "2024-01-17T12:00:00"
+      required:
+        - code
+        - message
+        - timestamp
+
+  responses:
+    Unauthorized:
+      description: Требуется авторизация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: "UNAUTHORIZED"
+            message: "Требуется авторизация"
+            timestamp: "2024-01-17T12:00:00"
+
+    ServiceUnavailable:
+      description: Сервис временно недоступен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: "DB_UNAVAILABLE"
+            message: "База данных временно недоступна"
+            timestamp: "2024-01-17T12:00:00"
+
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: HTTP Basic Authentication
+
+security:
+  - basicAuth: []
