@@ -190,7 +190,7 @@ public class TimeRecordService {
 
     public void tryReconnect() {
         try {
-            repository.count();
+            repository.existsById(1L);
             if (!dbAvailable.get()) {
                 dbAvailable.set(true);
                 log.info("Соединение с БД восстановлено");
